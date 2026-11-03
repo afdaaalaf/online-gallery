@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>afdal photography</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#f5f6f7;--ink:#16181d;--muted:#5b616b;--accent:#2438d6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Hanken Grotesk",system-ui,sans-serif}
+  header{padding:2.5rem clamp(1rem,4vw,3rem) 1.5rem}
+  .brand{font-size:1rem;font-weight:500;letter-spacing:-.01em}
+  h1{margin:2.5rem 0 .25rem;font-weight:300;font-size:clamp(2rem,6vw,3.75rem);letter-spacing:-.03em;line-height:1.05}
+  #sub{margin:0;color:var(--muted)}
+  #grid{columns:3 280px;column-gap:.75rem;padding:0 clamp(1rem,4vw,3rem) 7rem}
+  .tile{position:relative;break-inside:avoid;margin-bottom:.75rem;background:#e3e5e8}
+  .tile img{display:block;width:100%;height:auto;cursor:zoom-in}
+  .tile.on{outline:3px solid var(--accent);outline-offset:-3px}
+  .pick{position:absolute;top:.6rem;right:.6rem;width:2rem;height:2rem;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.25);cursor:pointer;color:#fff;font-size:1rem;line-height:1;padding:0}
+  .tile.on .pick,.pick.on{background:var(--accent)}
+  .tile.on .pick::after,.pick.on::after{content:"✓"}
+  #bar{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);display:flex;align-items:center;gap:.75rem;padding:.6rem .6rem .6rem 1.1rem;background:var(--ink);color:#fff;border-radius:999px;white-space:nowrap;z-index:5;max-width:94vw}
+  #bar button{font:inherit;border:0;border-radius:999px;padding:.55rem 1.1rem;cursor:pointer}
+  #clear{background:transparent;color:#c9ced6}
+  #dl{background:#fff;color:var(--ink);font-weight:500}
+  #dl:disabled{opacity:.5;cursor:wait}
+  #msg{padding:3rem clamp(1rem,4vw,3rem);color:var(--muted)}
+  #toast{position:fixed;left:50%;bottom:5rem;transform:translateX(-50%);background:#fff;color:var(--ink);padding:.6rem 1rem;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9}
+  #lb{position:fixed;inset:0;background:rgba(10,11,14,.96);z-index:20;display:grid;place-items:center}
+  #lb img{max-width:92vw;max-height:84vh;object-fit:contain}
+  #lb button{position:absolute;font:inherit;color:#fff;background:transparent;border:0;cursor:pointer;padding:1rem}
+  #lbx{top:0;right:0;font-size:1.75rem!important}
+  #lbp{left:0;top:50%;font-size:2rem!important}
+  #lbn{right:0;top:50%;font-size:2rem!important}
+  #lbs{position:absolute;bottom:1.25rem;left:50%;transform:translateX(-50%);width:auto!important;height:auto!important;border-radius:999px!important;border:2px solid #fff!important;padding:.5rem 1.2rem!important;font-size:.95rem!important}
+  #lbs.on{background:var(--accent)}
+  #lbs::before{content:"Select"}
+  #lbs.on::before{content:"✓ Selected"}
+  [hidden]{display:none!important}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">afdal photography</div>
+  <h1 id="title"></h1>
+  <p id="sub"></p>
+</header>
+<div id="msg" hidden></div>
+<main id="grid"></main>
+
+<div id="bar" hidden>
+  <span id="count"></span>
+  <button id="clear">Clear</button>
+  <button id="dl">Download</button>
+</div>
+<div id="toast" hidden></div>
+
+<div id="lb" hidden>
+  <img id="lbimg" alt="">
+  <button id="lbx" aria-label="Close">✕</button>
+  <button id="lbp" aria-label="Previous">‹</button>
+  <button id="lbn" aria-label="Next">›</button>
+  <button id="lbs" class="pick" aria-label="Select this photo"></button>
+</div>
+
+<script>
+const MAX = 10;
+const $ = id => document.getElementById(id);
+const folder = new URLSearchParams(location.search).get('folder');
+const storeKey = 'afdal:' + folder;
+let photos = [], sel = new Set(), cur = -1;
+
+const src = (p, w) => p.thumb ? `${p.thumb}=w${w}` : `https://drive.google.com/thumbnail?id=${p.id}&sz=w${w}`;
+const say = t => { $('msg').hidden = false; $('msg').textContent = t; };
+
+function toast(t) {
+  $('toast').textContent = t; $('toast').hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => $('toast').hidden = true, 2500);
+}
+
+function paint() {
+  photos.forEach(p => p.el.classList.toggle('on', sel.has(p.id)));
+  $('bar').hidden = sel.size === 0;
+  $('count').textContent = `${sel.size} of ${MAX} selected`;
+  if (cur >= 0) $('lbs').classList.toggle('on', sel.has(photos[cur].id));
+  try { localStorage.setItem(storeKey, JSON.stringify([...sel])); } catch {}
+}
+
+function toggle(id) {
+  if (sel.has(id)) sel.delete(id);
+  else if (sel.size >= MAX) return toast(`You can download up to ${MAX} photos at a time.`);
+  else sel.add(id);
+  paint();
+}
+
+function show(i) {
+  cur = (i + photos.length) % photos.length;
+  $('lbimg').src = src(photos[cur], 2000);
+  paint();
+}
+function closeLb() { cur = -1; $('lb').hidden = true; $('lbimg').removeAttribute('src'); }
+
+$('lbx').onclick = closeLb;
+$('lbp').onclick = () => show(cur - 1);
+$('lbn').onclick = () => show(cur + 1);
+$('lbs').onclick = () => toggle(photos[cur].id);
+document.addEventListener('keydown', e => {
+  if ($('lb').hidden) return;
+  if (e.key === 'Escape') closeLb();
+  if (e.key === 'ArrowLeft') show(cur - 1);
+  if (e.key === 'ArrowRight') show(cur + 1);
+});
+
+$('clear').onclick = () => { sel.clear(); paint(); };
+
+$('dl').onclick = async () => {
+  $('dl').disabled = true;
+  for (const id of sel) {
+    const a = document.createElement('a');
+    a.href = `/api/download?folder=${encodeURIComponent(folder)}&id=${encodeURIComponent(id)}`;
+    a.download = '';
+    document.body.append(a); a.click(); a.remove();
+    await new Promise(r => setTimeout(r, 900));
+  }
+  $('dl').disabled = false;
+  toast('Downloads started. Check your downloads folder.');
+};
+
+async function init() {
+  if (!folder) return say('This link is missing a gallery. Please use the link sent by afdal photography.');
+  const r = await fetch(`/api/list?folder=${encodeURIComponent(folder)}`).catch(() => null);
+  if (!r || !r.ok) return say('This gallery could not be loaded. Please check the link with afdal photography.');
+  const data = await r.json();
+
+  document.title = `${data.name} – afdal photography`;
+  $('title').textContent = data.name;
+  $('sub').textContent = `${data.photos.length} photos. Select up to ${MAX}, then download.`;
+  if (!data.photos.length) return say('There are no photos in this gallery yet.');
+
+  photos = data.photos;
+  photos.forEach((p, i) => {
+    const d = document.createElement('div');
+    d.className = 'tile';
+    d.innerHTML = `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${src(p, 600)}"><button class="pick" aria-label="Select photo"></button>`;
+    d.querySelector('img').onclick = () => { $('lb').hidden = false; show(i); };
+    d.querySelector('.pick').onclick = () => toggle(p.id);
+    p.el = d;
+    $('grid').append(d);
+  });
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storeKey) || '[]');
+    sel = new Set(saved.filter(id => photos.some(p => p.id === id)).slice(0, MAX));
+  } catch {}
+  paint();
+}
+init();
+</script>
+</body>
+</html>
